@@ -5,6 +5,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.Sound;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -14,14 +15,17 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 
-public final class UnjustPlugin extends JavaPlugin implements Listener {
+public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompleter {
 
     private final Map<UUID, String> originalNames = new HashMap<>();
     private final Map<UUID, String> fakeNames = new HashMap<>();
@@ -39,6 +43,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
+        getCommand("unjustsmpplugin").setTabCompleter(this);
         getLogger().info("UnjustPlugin включен!");
     }
 
@@ -50,20 +55,16 @@ public final class UnjustPlugin extends JavaPlugin implements Listener {
         UUID uuid = player.getUniqueId();
         event.setDeathMessage(null);
 
-        // Какой ник показывать в чате
         String displayName = fakeNames.containsKey(uuid)
                 ? fakeNames.get(uuid)
                 : player.getName();
 
-        // Причина смерти
         String deathReason = getDeathReason(player);
 
-        // Сообщения
         Bukkit.broadcastMessage("§f" + displayName + " " + deathReason);
         Bukkit.broadcastMessage("§e" + displayName + " покинул игру");
         player.sendMessage("§fТы " + deathReason);
 
-        // Звук визера
         for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
             onlinePlayer.playSound(
                 onlinePlayer.getLocation(),
@@ -73,16 +74,13 @@ public final class UnjustPlugin extends JavaPlugin implements Listener {
             );
         }
 
-        // Сохраняем оригинальный ник
         if (!originalNames.containsKey(uuid)) {
             originalNames.put(uuid, player.getName());
         }
 
-        // Новый фейковый ник
         String newFakeName = generateFakeName();
         fakeNames.put(uuid, newFakeName);
 
-        // Применяем через 1 секунду
         Bukkit.getScheduler().runTaskLater(
             UnjustPlugin.this,
             () -> applyFakeName(player, newFakeName),
@@ -103,8 +101,6 @@ public final class UnjustPlugin extends JavaPlugin implements Listener {
         if (finalHealth <= 0) {
             event.setCancelled(true);
             player.setHealth(1.0);
-            player.sendMessage(ChatColor.GOLD + "[Бессмертие] " + ChatColor.YELLOW
-                    + "Ты был спасён от смерти!");
         }
     }
 
@@ -274,6 +270,56 @@ public final class UnjustPlugin extends JavaPlugin implements Listener {
         sendHelp(sender);
         return true;
     }
+
+    // ==================== АВТОДОПОЛНЕНИЕ (TAB) ====================
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command,
+                                      String alias, String[] args) {
+        List<String> result = new ArrayList<>();
+
+        // /unjustsmpplugin <первый аргумент>
+        if (args.length == 1) {
+            for (String sub : Arrays.asList("reset", "immortal")) {
+                if (sub.startsWith(args[0].toLowerCase())) {
+                    result.add(sub);
+                }
+            }
+            return result;
+        }
+
+        // /unjustsmpplugin reset <ник>   или   /unjustsmpplugin immortal <ник>
+        if (args.length == 2) {
+            String prefix = args[1].toLowerCase();
+            for (Player online : Bukkit.getOnlinePlayers()) {
+                String name = online.getName();
+                String fake = fakeNames.get(online.getUniqueId());
+
+                if (name.toLowerCase().startsWith(prefix)) {
+                    result.add(name);
+                }
+                if (fake != null && fake.toLowerCase().startsWith(prefix)) {
+                    result.add(fake);
+                }
+            }
+            return result;
+        }
+
+        // /unjustsmpplugin immortal <ник> <on/off>
+        if (args.length == 3 && args[0].equalsIgnoreCase("immortal")) {
+            String prefix = args[2].toLowerCase();
+            for (String opt : Arrays.asList("on", "off")) {
+                if (opt.startsWith(prefix)) {
+                    result.add(opt);
+                }
+            }
+            return result;
+        }
+
+        return result;
+    }
+
+    // ==================== ПОИСК ИГРОКА ====================
 
     private Player findPlayer(String name) {
         Player target = Bukkit.getPlayerExact(name);
