@@ -1,0 +1,14 @@
+name: UnjustPlugin
+version: 2.0
+main: ru.example.unjustplugin.UnjustPlugin
+api-version: '1.21'
+description: Смерть, фейковый выход, звук визера, смена ника, бессмертие
+author: YourName
+commands:
+  unjustsmpplugin:
+    description: Управление плагином UnjustPlugin
+    usage: |
+      /unjustsmpplugin reset <ник>
+      /unjustsmpplugin immortal <ник> [on/off]
+    aliases: [usp]
+    permission: unjust.admin
