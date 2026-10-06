@@ -24,6 +24,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scoreboard.Scoreboard;
@@ -268,6 +269,15 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
         event.setCancelled(true);
         fireOrbitalWindStrike(target.getLocation());
+
+        // Ломаем булаву после одного удара
+        if (meta instanceof Damageable) {
+            Damageable damageable = (Damageable) meta;
+            damageable.setDamage(item.getType().getMaxDurability());
+            item.setItemMeta((ItemMeta) damageable);
+        }
+
+        attacker.playSound(attacker.getLocation(), Sound.ENTITY_ITEM_BREAK, 1.0F, 1.0F);
     }
 
     private void fireOrbitalWindStrike(Location center) {
@@ -289,15 +299,10 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                 Location spawnLoc = new Location(world, x, spawnBase.getY(), z);
                 WindCharge charge = world.spawn(spawnLoc, WindCharge.class);
 
+                // Направляем вниз — заряды летят до земли естественным образом
+                // и взрываются при столкновении с блоком или сущностью
                 Vector velocity = new Vector(0, -1.5, 0);
                 charge.setVelocity(velocity);
-
-                int delay = 20 + ring * 2;
-                Bukkit.getScheduler().runTaskLater(this, () -> {
-                    if (charge.isValid()) {
-                        charge.explode();
-                    }
-                }, delay);
             }
         }
 
@@ -406,7 +411,8 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
             meta.setLore(Arrays.asList(
                 "§7Ударь по врагу —",
                 "§7в небе раскроются кольца",
-                "§7из §fзарядов ветра§7!"
+                "§7из §fзарядов ветра§7!",
+                "§c⚠ Ломается после одного удара"
             ));
             mace.setItemMeta(meta);
         }
