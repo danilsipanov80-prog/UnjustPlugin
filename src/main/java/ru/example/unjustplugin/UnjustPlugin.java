@@ -6,6 +6,7 @@ import org.bukkit.Sound;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -32,19 +33,38 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
     private final Set<UUID> immortals = new HashSet<>();
     private final Random random = new Random();
 
-    private final String[] famousNames = {
-        "Notch", "Dream", "Technoblade", "Herobrine", "Steve", "Alex",
-        "Ph1LzA", "TommyInnit", "Wilbur", "Sapnap", "GeorgeNotFound",
-        "CaptainSparklez", "DanTDM", "SkyDoesMinecraft", "Stampy",
-        "PopularMMOs", "PrestonPlayz", "SSundee", "JeromeASF",
-        "BajanCanadian", "Vikkstar", "MrBeast", "PewDiePie"
-    };
+    // Значения из конфига
+    private List<String> famousNames = new ArrayList<>();
+    private int replaceChance = 40;
+    private int underscoreChance = 30;
 
     @Override
     public void onEnable() {
+        // Создаём config.yml при первом запуске
+        saveDefaultConfig();
+        loadConfigValues();
+
         getServer().getPluginManager().registerEvents(this, this);
         getCommand("unjustsmpplugin").setTabCompleter(this);
         getLogger().info("UnjustPlugin включен!");
+    }
+
+    /**
+     * Читает значения из config.yml в поля класса.
+     */
+    private void loadConfigValues() {
+        FileConfiguration cfg = getConfig();
+        famousNames = cfg.getStringList("famous-names");
+        replaceChance = cfg.getInt("replace-chance", 40);
+        underscoreChance = cfg.getInt("underscore-chance", 30);
+
+        // Если список пуст — ставим дефолт, чтобы плагин не падал
+        if (famousNames.isEmpty()) {
+            famousNames = Arrays.asList(
+                "Notch", "Dream", "Technoblade", "Herobrine", "Steve", "Alex"
+            );
+            getLogger().warning("Список famous-names пуст в config.yml! Использую дефолтный.");
+        }
     }
 
     // ==================== СМЕРТЬ ====================
@@ -163,7 +183,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
     // ==================== ГЕНЕРАЦИЯ ФЕЙКОВОГО НИКА ====================
 
     private String generateFakeName() {
-        String base = famousNames[random.nextInt(famousNames.length)];
+        String base = famousNames.get(random.nextInt(famousNames.size()));
         return slightlyModify(base);
     }
 
@@ -171,7 +191,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         StringBuilder sb = new StringBuilder();
 
         for (char c : name.toCharArray()) {
-            if (random.nextInt(100) < 40) {
+            if (random.nextInt(100) < replaceChance) {
                 switch (Character.toLowerCase(c)) {
                     case 'o': sb.append('0'); continue;
                     case 'i': sb.append(random.nextBoolean() ? '1' : 'l'); continue;
@@ -187,7 +207,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
             sb.append(c);
         }
 
-        if (random.nextInt(100) < 30) {
+        if (random.nextInt(100) < underscoreChance) {
             sb.append('_');
         }
 
@@ -205,6 +225,14 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!command.getName().equalsIgnoreCase("unjustsmpplugin")) {
             return false;
+        }
+
+        // /usp reload
+        if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
+            reloadConfig();
+            loadConfigValues();
+            sender.sendMessage(ChatColor.GREEN + "Конфиг перезагружен!");
+            return true;
         }
 
         if (args.length < 2) {
@@ -278,9 +306,8 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                                       String alias, String[] args) {
         List<String> result = new ArrayList<>();
 
-        // /unjustsmpplugin <первый аргумент>
         if (args.length == 1) {
-            for (String sub : Arrays.asList("reset", "immortal")) {
+            for (String sub : Arrays.asList("reset", "immortal", "reload")) {
                 if (sub.startsWith(args[0].toLowerCase())) {
                     result.add(sub);
                 }
@@ -288,8 +315,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
             return result;
         }
 
-        // /unjustsmpplugin reset <ник>   или   /unjustsmpplugin immortal <ник>
-        if (args.length == 2) {
+        if (args.length == 2 && !args[0].equalsIgnoreCase("reload")) {
             String prefix = args[1].toLowerCase();
             for (Player online : Bukkit.getOnlinePlayers()) {
                 String name = online.getName();
@@ -305,7 +331,6 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
             return result;
         }
 
-        // /unjustsmpplugin immortal <ник> <on/off>
         if (args.length == 3 && args[0].equalsIgnoreCase("immortal")) {
             String prefix = args[2].toLowerCase();
             for (String opt : Arrays.asList("on", "off")) {
@@ -338,6 +363,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         sender.sendMessage(ChatColor.YELLOW + "===== UnjustPlugin =====");
         sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reset <ник>");
         sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin immortal <ник> [on/off]");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reload");
         sender.sendMessage(ChatColor.GRAY + "Сокращённо: /usp");
     }
 }
