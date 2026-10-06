@@ -3,12 +3,18 @@ package ru.example.unjustplugin;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.EntityEffect;
+import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.WindCharge;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -17,7 +23,11 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.Team;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
@@ -41,6 +51,16 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
     private int replaceChance = 40;
     private int underscoreChance = 30;
     private boolean blockChat = true;
+
+    private static final String TEAM_NAME = "usp_nametag";
+    private static final String MACE_NAME = "§fWindcharge Shot";
+
+    // Настройки орбиталки
+    private static final double ORBITAL_HEIGHT = 100.0;
+    private static final int RINGS = 10;
+    private static final int CHARGE_PER_RING = 30;
+    private static final double MIN_RADIUS = 2.0;
+    private static final double MAX_RADIUS = 25.0;
 
     @Override
     public void onEnable() {
@@ -90,12 +110,52 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         if (!blockChat) return;
-
         if (event.getPlayer().isOp()) return;
         if (event.getPlayer().hasPermission("unjust.chat")) return;
 
         event.setCancelled(true);
         event.getPlayer().sendMessage(ChatColor.RED + "Чат отключён. Писать могут только операторы.");
+    }
+
+    // ==================== СМЕНА НИКА ====================
+
+    private void applyFakeName(Player player, String fakeName) {
+        player.setDisplayName(ChatColor.WHITE + fakeName);
+        player.setPlayerListName(ChatColor.WHITE + fakeName);
+
+        try {
+            Scoreboard board = Bukkit.getScoreboardManager().getMainScoreboard();
+            Team team = board.getTeam(TEAM_NAME);
+            if (team == null) {
+                team = board.registerNewTeam(TEAM_NAME);
+            }
+
+            for (String entry : new ArrayList<>(team.getEntries())) {
+                if (entry.equals(player.getName())) {
+                    team.removeEntry(player.getName());
+                }
+            }
+
+            team.addEntry(player.getName());
+            team.setPrefix(fakeName + " ");
+        } catch (Exception e) {
+            getLogger().warning("Ошибка установки ника над головой: " + e.getMessage());
+        }
+    }
+
+    private void resetFakeName(Player player) {
+        player.setDisplayName(player.getName());
+        player.setPlayerListName(player.getName());
+
+        try {
+            Scoreboard board = Bukkit.getScoreboardManager().getMainScoreboard();
+            Team team = board.getTeam(TEAM_NAME);
+            if (team != null && team.hasEntry(player.getName())) {
+                team.removeEntry(player.getName());
+            }
+        } catch (Exception e) {
+            getLogger().warning("Ошибка сброса ника над головой: " + e.getMessage());
+        }
     }
 
     // ==================== СМЕРТЬ ====================
@@ -166,7 +226,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
         if (event instanceof EntityDamageByEntityEvent) {
             EntityDamageByEntityEvent byEntity = (EntityDamageByEntityEvent) event;
-            org.bukkit.entity.Entity damager = byEntity.getDamager();
+            Entity damager = byEntity.getDamager();
 
             Vector direction = player.getLocation().toVector()
                     .subtract(damager.getLocation().toVector());
@@ -186,6 +246,63 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         backward.setY(0.4);
 
         player.setVelocity(backward);
+    }
+
+    // ==================== ОРБИТАЛЬНЫЙ УДАР ====================
+
+    @EventHandler
+    public void onMaceHit(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player)) return;
+        if (!(event.getEntity() instanceof LivingEntity)) return;
+
+        Player attacker = (Player) event.getDamager();
+        LivingEntity target = (LivingEntity) event.getEntity();
+
+        ItemStack item = attacker.getInventory().getItemInMainHand();
+        if (item.getType() != Material.MACE) return;
+
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return;
+        if (!meta.hasDisplayName()) return;
+        if (!meta.getDisplayName().equals(MACE_NAME)) return;
+
+        event.setCancelled(true);
+        fireOrbitalWindStrike(target.getLocation());
+    }
+
+    private void fireOrbitalWindStrike(Location center) {
+        World world = center.getWorld();
+        if (world == null) return;
+
+        Location spawnBase = center.clone().add(0, ORBITAL_HEIGHT, 0);
+
+        for (int ring = 0; ring < RINGS; ring++) {
+            double radius = MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS)
+                    * ((double) ring / (RINGS - 1));
+            double angleStep = 360.0 / CHARGE_PER_RING;
+
+            for (int i = 0; i < CHARGE_PER_RING; i++) {
+                double angle = Math.toRadians(i * angleStep);
+                double x = spawnBase.getX() + Math.cos(angle) * radius;
+                double z = spawnBase.getZ() + Math.sin(angle) * radius;
+
+                Location spawnLoc = new Location(world, x, spawnBase.getY(), z);
+                WindCharge charge = world.spawn(spawnLoc, WindCharge.class);
+
+                Vector velocity = new Vector(0, -1.5, 0);
+                charge.setVelocity(velocity);
+
+                int delay = 20 + ring * 2;
+                Bukkit.getScheduler().runTaskLater(this, () -> {
+                    if (charge.isValid()) {
+                        charge.explode();
+                    }
+                }, delay);
+            }
+        }
+
+        world.playSound(center, Sound.ENTITY_WITHER_SPAWN, 2.0F, 0.5F);
+        world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 2.0F, 0.7F);
     }
 
     // ==================== ВХОД ====================
@@ -281,9 +398,21 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         return sb.toString();
     }
 
-    private void applyFakeName(Player player, String fakeName) {
-        player.setDisplayName(ChatColor.WHITE + fakeName);
-        player.setPlayerListName(ChatColor.WHITE + fakeName);
+    private void giveOrbitalMace(Player player) {
+        ItemStack mace = new ItemStack(Material.MACE, 1);
+        ItemMeta meta = mace.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(MACE_NAME);
+            meta.setLore(Arrays.asList(
+                "§7Ударь по врагу —",
+                "§7в небе раскроются кольца",
+                "§7из §fзарядов ветра§7!"
+            ));
+            mace.setItemMeta(meta);
+        }
+
+        player.getInventory().addItem(mace);
+        player.sendMessage(ChatColor.WHITE + "Ты получил " + MACE_NAME + "§f!");
     }
 
     // ==================== КОМАНДЫ ====================
@@ -295,7 +424,6 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         }
 
         try {
-            // /usp reload
             if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
                 reloadConfig();
                 loadConfigValues();
@@ -303,13 +431,10 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                 return true;
             }
 
-            // /usp chat [block|unblock]
             if (args.length >= 1 && args[0].equalsIgnoreCase("chat")) {
                 if (args.length < 2) {
                     String status = blockChat ? "§cзаблокирован" : "§aразблокирован";
                     sender.sendMessage(ChatColor.YELLOW + "Чат сейчас " + status);
-                    sender.sendMessage(ChatColor.WHITE + "/usp chat block");
-                    sender.sendMessage(ChatColor.WHITE + "/usp chat unblock");
                     return true;
                 }
 
@@ -318,18 +443,29 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                     blockChat = true;
                     getConfig().set("block-chat", true);
                     saveConfig();
-                    Bukkit.broadcastMessage(ChatColor.RED + "Чат заблокирован. Писать могут только операторы.");
+                    Bukkit.broadcastMessage(ChatColor.RED + "Чат заблокирован.");
                     return true;
                 } else if (mode.equals("unblock")) {
                     blockChat = false;
                     getConfig().set("block-chat", false);
                     saveConfig();
-                    Bukkit.broadcastMessage(ChatColor.GREEN + "Чат разблокирован. Писать могут все.");
-                    return true;
-                } else {
-                    sender.sendMessage(ChatColor.RED + "Использование: /usp chat block|unblock");
+                    Bukkit.broadcastMessage(ChatColor.GREEN + "Чат разблокирован.");
                     return true;
                 }
+                return true;
+            }
+
+            if (args.length >= 3 && args[0].equalsIgnoreCase("orbital")
+                    && args[1].equalsIgnoreCase("mace")
+                    && args[2].equalsIgnoreCase("rod")) {
+
+                if (!(sender instanceof Player)) {
+                    sender.sendMessage(ChatColor.RED + "Только для игроков!");
+                    return true;
+                }
+
+                giveOrbitalMace((Player) sender);
+                return true;
             }
 
             if (args.length < 2) {
@@ -339,7 +475,6 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
             String sub = args[0].toLowerCase();
 
-            // ----- reset -----
             if (sub.equals("reset")) {
                 Player target = findPlayer(args[1]);
                 if (target == null) {
@@ -349,19 +484,16 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
                 UUID uuid = target.getUniqueId();
                 if (originalNames.containsKey(uuid)) {
-                    String original = originalNames.get(uuid);
-                    target.setDisplayName(original);
-                    target.setPlayerListName(original);
+                    resetFakeName(target);
                     originalNames.remove(uuid);
                     fakeNames.remove(uuid);
-                    sender.sendMessage(ChatColor.GREEN + "Ник игрока " + original + " восстановлен!");
+                    sender.sendMessage(ChatColor.GREEN + "Ник игрока восстановлен!");
                 } else {
                     sender.sendMessage(ChatColor.YELLOW + "У этого игрока нет фейкового ника.");
                 }
                 return true;
             }
 
-            // ----- immortal -----
             if (sub.equals("immortal")) {
                 Player target = findPlayer(args[1]);
                 if (target == null) {
@@ -411,7 +543,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         List<String> result = new ArrayList<>();
 
         if (args.length == 1) {
-            for (String sub : Arrays.asList("reset", "immortal", "reload", "chat")) {
+            for (String sub : Arrays.asList("reset", "immortal", "reload", "chat", "orbital")) {
                 if (sub.startsWith(args[0].toLowerCase())) {
                     result.add(sub);
                 }
@@ -429,8 +561,24 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
             return result;
         }
 
+        if (args.length == 2 && args[0].equalsIgnoreCase("orbital")) {
+            if ("mace".startsWith(args[1].toLowerCase())) {
+                result.add("mace");
+            }
+            return result;
+        }
+
+        if (args.length == 3 && args[0].equalsIgnoreCase("orbital")
+                && args[1].equalsIgnoreCase("mace")) {
+            if ("rod".startsWith(args[2].toLowerCase())) {
+                result.add("rod");
+            }
+            return result;
+        }
+
         if (args.length == 2 && !args[0].equalsIgnoreCase("reload")
-                && !args[0].equalsIgnoreCase("chat")) {
+                && !args[0].equalsIgnoreCase("chat")
+                && !args[0].equalsIgnoreCase("orbital")) {
             String prefix = args[1].toLowerCase();
             for (Player online : Bukkit.getOnlinePlayers()) {
                 String name = online.getName();
@@ -459,8 +607,6 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         return result;
     }
 
-    // ==================== ПОИСК ИГРОКА ====================
-
     private Player findPlayer(String name) {
         Player target = Bukkit.getPlayerExact(name);
         if (target != null) return target;
@@ -479,6 +625,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reset <ник>");
         sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin immortal <ник> [on/off]");
         sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin chat block|unblock");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin orbital mace rod");
         sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reload");
         sender.sendMessage(ChatColor.GRAY + "Сокращённо: /usp");
     }
