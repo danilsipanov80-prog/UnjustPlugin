@@ -1,0 +1,23 @@
+# Список популярных ников, из которых плагин берёт основу
+famous-names:
+  - "Notch"
+  - "Dream"
+  - "Technoblade"
+  - "Herobrine"
+  - "Steve"
+  - "Alex"
+  - "Ph1LzA"
+  - "TommyInnit"
+  - "Wilbur"
+  - "Sapnap"
+  - "GeorgeNotFound"
+  - "CaptainSparklez"
+  - "DanTDM"
+  - "MrBeast"
+  - "PewDiePie"
+
+# Шанс заменить букву на цифру (0-100)
+replace-chance: 40
+
+# Шанс добавить "_" в конец ника (0-100)
+underscore-chance: 30
