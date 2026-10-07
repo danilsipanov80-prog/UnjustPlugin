@@ -62,7 +62,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
     private static final String POTION_ROD_NAME = "§fOrbital Potion";
 
     private static final double ORBITAL_HEIGHT = 100.0;
-    private static final int RINGS = 5;
+    private static final int RINGS = 7;
     private static final int CHARGE_PER_RING = 30;
     private static final double MIN_RADIUS = 2.0;
     private static final double MAX_RADIUS = 25.0;
@@ -278,9 +278,6 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         breakMace(attacker, item);
     }
 
-    /**
-     * Полностью ломает булаву (удаляет из руки). Работает даже в креативе.
-     */
     private void breakMace(Player player, ItemStack item) {
         player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 1.0F, 1.0F);
         player.getInventory().setItemInMainHand(null);
@@ -335,39 +332,23 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         if (!meta.hasDisplayName()) return;
         if (!meta.getDisplayName().equals(POTION_ROD_NAME)) return;
 
-        // Запускаем орбиталку в точке, откуда бросили
         fireOrbitalPotionStrike(thrower.getLocation());
-
-        // Удаляем зелье, чтобы не сработало как обычно
         potion.remove();
     }
 
-    private ItemStack createRandomHarmfulPotion() {
+    /**
+     * Создаёт зелье моментального урона (Harming Potion) — то самое "зелье мора".
+     */
+    private ItemStack createHarmPotion() {
         ItemStack potionItem = new ItemStack(Material.SPLASH_POTION);
         PotionMeta potionMeta = (PotionMeta) potionItem.getItemMeta();
         if (potionMeta == null) return potionItem;
 
-        Object[][] effects = {
-            { PotionEffectType.INSTANT_DAMAGE, 1, 1, Color.RED },
-            { PotionEffectType.POISON, 200, 2, Color.GREEN },
-            { PotionEffectType.WEAKNESS, 300, 1, Color.GRAY },
-            { PotionEffectType.SLOWNESS, 200, 1, Color.fromRGB(100, 100, 150) },
-            { PotionEffectType.SLOW_FALLING, 200, 1, Color.WHITE },
-            { PotionEffectType.HUNGER, 300, 1, Color.fromRGB(150, 100, 0) },
-            { PotionEffectType.BLINDNESS, 100, 0, Color.BLACK },
-            { PotionEffectType.NAUSEA, 200, 0, Color.fromRGB(100, 50, 150) },
-            { PotionEffectType.MINING_FATIGUE, 200, 1, Color.fromRGB(80, 80, 80) },
-            { PotionEffectType.LEVITATION, 100, 0, Color.fromRGB(200, 200, 255) }
-        };
-
-        Object[] chosen = effects[random.nextInt(effects.length)];
-        PotionEffectType type = (PotionEffectType) chosen[0];
-        int duration = (int) chosen[1];
-        int amplifier = (int) chosen[2];
-        Color color = (Color) chosen[3];
-
-        potionMeta.setColor(color);
-        potionMeta.addCustomEffect(new PotionEffect(type, duration, amplifier), true);
+        potionMeta.setColor(Color.fromRGB(120, 0, 0));
+        potionMeta.addCustomEffect(
+            new PotionEffect(PotionEffectType.INSTANT_DAMAGE, 1, 1),
+            true
+        );
         potionItem.setItemMeta(potionMeta);
 
         return potionItem;
@@ -391,9 +372,9 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
                 Location spawnLoc = new Location(world, x, spawnBase.getY(), z);
                 ThrownPotion potion = (ThrownPotion) world.spawnEntity(
-                        spawnLoc, org.bukkit.entity.EntityType.SPLASH_POTION);
+                        spawnLoc, org.bukkit.entity.EntityType.POTION);
 
-                potion.setItem(createRandomHarmfulPotion());
+                potion.setItem(createHarmPotion());
 
                 Vector velocity = new Vector(0, -1.5, 0);
                 potion.setVelocity(velocity);
@@ -522,12 +503,15 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         PotionMeta potionMeta = (PotionMeta) potionRod.getItemMeta();
         if (potionMeta != null) {
             potionMeta.setDisplayName(POTION_ROD_NAME);
-            potionMeta.setColor(Color.RED);
-            potionMeta.addCustomEffect(new PotionEffect(PotionEffectType.INSTANT_DAMAGE, 1, 1), true);
+            potionMeta.setColor(Color.fromRGB(120, 0, 0));
+            potionMeta.addCustomEffect(
+                new PotionEffect(PotionEffectType.INSTANT_DAMAGE, 1, 1),
+                true
+            );
             potionMeta.setLore(Arrays.asList(
                 "§7Брось зелье —",
                 "§7с небес полетят кольца",
-                "§7из §cслучайных вредных зелий§7!",
+                "§7из §cзелий моментального урона§7!",
                 "§c⚠ Одноразовое"
             ));
             potionRod.setItemMeta(potionMeta);
