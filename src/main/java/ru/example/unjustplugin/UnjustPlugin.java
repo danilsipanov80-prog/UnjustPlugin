@@ -64,7 +64,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
     private static final String POTION_ROD_NAME = "§fOrbital Potion";
 
     private static final double ORBITAL_HEIGHT = 100.0;
-    private static final int RINGS = 7;
+    private static final int RINGS = 10;
     private static final int CHARGE_PER_RING = 30;
     private static final double MIN_RADIUS = 2.0;
     private static final double MAX_RADIUS = 25.0;
@@ -286,12 +286,35 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         player.updateInventory();
     }
 
+    /**
+     * Спавнит WindCharge и через задержку взрывает его.
+     */
+    private void spawnExplosiveWindCharge(World world, Location loc) {
+        org.bukkit.entity.WindCharge charge = world.spawn(
+                loc, org.bukkit.entity.WindCharge.class);
+        charge.setVelocity(new Vector(0, -1.5, 0));
+
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (charge.isValid()) {
+                world.createExplosion(charge.getLocation(), 2.0F, false, false);
+                charge.remove();
+            }
+        }, 80L);
+    }
+
     private void fireOrbitalWindStrike(Location center) {
         World world = center.getWorld();
         if (world == null) return;
 
         Location spawnBase = center.clone().add(0, ORBITAL_HEIGHT, 0);
 
+        // ===== ЦЕНТР =====
+        for (int i = 0; i < 5; i++) {
+            Location centerLoc = spawnBase.clone().add(0, -i * 0.5, 0);
+            spawnExplosiveWindCharge(world, centerLoc);
+        }
+
+        // ===== КОЛЬЦА =====
         for (int ring = 0; ring < RINGS; ring++) {
             double radius = MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS)
                     * ((double) ring / (RINGS - 1));
@@ -303,11 +326,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                 double z = spawnBase.getZ() + Math.sin(angle) * radius;
 
                 Location spawnLoc = new Location(world, x, spawnBase.getY(), z);
-                org.bukkit.entity.WindCharge charge = world.spawn(
-                        spawnLoc, org.bukkit.entity.WindCharge.class);
-
-                Vector velocity = new Vector(0, -1.5, 0);
-                charge.setVelocity(velocity);
+                spawnExplosiveWindCharge(world, spawnLoc);
             }
         }
 
@@ -360,15 +379,15 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
         Object[][] effects = {
             { PotionEffectType.INSTANT_DAMAGE, 1, Color.fromRGB(120, 0, 0) },
-            { PotionEffectType.POISON, 200, Color.fromRGB(50, 150, 50) },
-            { PotionEffectType.WEAKNESS, 300, Color.fromRGB(120, 120, 120) },
-            { PotionEffectType.SLOWNESS, 200, Color.fromRGB(100, 100, 150) },
-            { PotionEffectType.SLOW_FALLING, 200, Color.fromRGB(200, 200, 255) },
-            { PotionEffectType.HUNGER, 300, Color.fromRGB(150, 100, 0) },
-            { PotionEffectType.BLINDNESS, 100, Color.fromRGB(30, 30, 30) },
-            { PotionEffectType.NAUSEA, 200, Color.fromRGB(100, 50, 150) },
-            { PotionEffectType.MINING_FATIGUE, 200, Color.fromRGB(80, 80, 80) },
-            { PotionEffectType.LEVITATION, 100, Color.fromRGB(220, 220, 255) }
+            { PotionEffectType.POISON, 1200, Color.fromRGB(50, 150, 50) },
+            { PotionEffectType.WEAKNESS, 1800, Color.fromRGB(120, 120, 120) },
+            { PotionEffectType.SLOWNESS, 1200, Color.fromRGB(100, 100, 150) },
+            { PotionEffectType.SLOW_FALLING, 1200, Color.fromRGB(200, 200, 255) },
+            { PotionEffectType.HUNGER, 1800, Color.fromRGB(150, 100, 0) },
+            { PotionEffectType.BLINDNESS, 600, Color.fromRGB(30, 30, 30) },
+            { PotionEffectType.NAUSEA, 1200, Color.fromRGB(100, 50, 150) },
+            { PotionEffectType.MINING_FATIGUE, 1200, Color.fromRGB(80, 80, 80) },
+            { PotionEffectType.LEVITATION, 600, Color.fromRGB(220, 220, 255) }
         };
 
         Object[] chosen = effects[random.nextInt(effects.length)];
@@ -392,6 +411,16 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
         Location spawnBase = center.clone().add(0, ORBITAL_HEIGHT, 0);
 
+        // ===== ЦЕНТР =====
+        for (int i = 0; i < 5; i++) {
+            Location centerLoc = spawnBase.clone().add(0, -i * 0.5, 0);
+            ThrownPotion potion = (ThrownPotion) world.spawnEntity(
+                    centerLoc, org.bukkit.entity.EntityType.POTION);
+            potion.setItem(createRandomHarmfulPotion());
+            potion.setVelocity(new Vector(0, -1.5, 0));
+        }
+
+        // ===== КОЛЬЦА =====
         for (int ring = 0; ring < RINGS; ring++) {
             double radius = MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS)
                     * ((double) ring / (RINGS - 1));
@@ -407,9 +436,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                         spawnLoc, org.bukkit.entity.EntityType.POTION);
 
                 potion.setItem(createRandomHarmfulPotion());
-
-                Vector velocity = new Vector(0, -1.5, 0);
-                potion.setVelocity(velocity);
+                potion.setVelocity(new Vector(0, -1.5, 0));
             }
         }
 
@@ -643,146 +670,4 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                 } else {
                     sender.sendMessage(ChatColor.YELLOW + "У этого игрока нет фейкового ника.");
                 }
-                return true;
-            }
-
-            if (sub.equals("immortal")) {
-                Player target = findPlayer(args[1]);
-                if (target == null) {
-                    sender.sendMessage(ChatColor.RED + "Игрок не найден!");
-                    return true;
-                }
-
-                UUID uuid = target.getUniqueId();
-                boolean enable;
-
-                if (args.length >= 3) {
-                    enable = args[2].equalsIgnoreCase("on") || args[2].equalsIgnoreCase("true");
-                } else {
-                    enable = !immortals.contains(uuid);
-                }
-
-                if (enable) {
-                    immortals.add(uuid);
-                    target.sendMessage(ChatColor.GOLD + "[Бессмертие] " + ChatColor.GREEN
-                            + "Ты теперь бессмертен!");
-                    sender.sendMessage(ChatColor.GREEN + "Бессмертие включено для " + target.getName());
-                } else {
-                    immortals.remove(uuid);
-                    target.sendMessage(ChatColor.GOLD + "[Бессмертие] " + ChatColor.RED
-                            + "Ты больше не бессмертен.");
-                    sender.sendMessage(ChatColor.GREEN + "Бессмертие выключено для " + target.getName());
-                }
-                return true;
-            }
-
-            sendHelp(sender);
-            return true;
-
-        } catch (Exception e) {
-            sender.sendMessage(ChatColor.RED + "Произошла ошибка при выполнении команды.");
-            getLogger().warning("Ошибка команды: " + e.getMessage());
-            e.printStackTrace();
-            return true;
-        }
-    }
-
-    // ==================== АВТОДОПОЛНЕНИЕ (TAB) ====================
-
-    @Override
-    public List<String> onTabComplete(CommandSender sender, Command command,
-                                      String alias, String[] args) {
-        List<String> result = new ArrayList<>();
-
-        if (args.length == 1) {
-            for (String sub : Arrays.asList("reset", "immortal", "reload", "chat", "orbital")) {
-                if (sub.startsWith(args[0].toLowerCase())) {
-                    result.add(sub);
-                }
-            }
-            return result;
-        }
-
-        if (args.length == 2 && args[0].equalsIgnoreCase("chat")) {
-            String prefix = args[1].toLowerCase();
-            for (String opt : Arrays.asList("block", "unblock")) {
-                if (opt.startsWith(prefix)) {
-                    result.add(opt);
-                }
-            }
-            return result;
-        }
-
-        if (args.length == 2 && args[0].equalsIgnoreCase("orbital")) {
-            for (String opt : Arrays.asList("mace", "potion")) {
-                if (opt.startsWith(args[1].toLowerCase())) {
-                    result.add(opt);
-                }
-            }
-            return result;
-        }
-
-        if (args.length == 3 && args[0].equalsIgnoreCase("orbital")) {
-            if ("rod".startsWith(args[2].toLowerCase())) {
-                result.add("rod");
-            }
-            return result;
-        }
-
-        if (args.length == 2 && !args[0].equalsIgnoreCase("reload")
-                && !args[0].equalsIgnoreCase("chat")
-                && !args[0].equalsIgnoreCase("orbital")) {
-            String prefix = args[1].toLowerCase();
-            for (Player online : Bukkit.getOnlinePlayers()) {
-                String name = online.getName();
-                String fake = fakeNames.get(online.getUniqueId());
-
-                if (name.toLowerCase().startsWith(prefix)) {
-                    result.add(name);
-                }
-                if (fake != null && fake.toLowerCase().startsWith(prefix)) {
-                    result.add(fake);
-                }
-            }
-            return result;
-        }
-
-        if (args.length == 3 && args[0].equalsIgnoreCase("immortal")) {
-            String prefix = args[2].toLowerCase();
-            for (String opt : Arrays.asList("on", "off")) {
-                if (opt.startsWith(prefix)) {
-                    result.add(opt);
-                }
-            }
-            return result;
-        }
-
-        return result;
-    }
-
-    // ==================== ПОИСК ИГРОКА ====================
-
-    private Player findPlayer(String name) {
-        Player target = Bukkit.getPlayerExact(name);
-        if (target != null) return target;
-
-        for (Player online : Bukkit.getOnlinePlayers()) {
-            if (fakeNames.containsKey(online.getUniqueId())
-                    && fakeNames.get(online.getUniqueId()).equalsIgnoreCase(name)) {
-                return online;
-            }
-        }
-        return null;
-    }
-
-    private void sendHelp(CommandSender sender) {
-        sender.sendMessage(ChatColor.YELLOW + "===== UnjustPlugin =====");
-        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reset <ник>");
-        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin immortal <ник> [on/off]");
-        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin chat block|unblock");
-        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin orbital mace rod");
-        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin orbital potion rod");
-        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reload");
-        sender.sendMessage(ChatColor.GRAY + "Сокращённо: /usp");
-    }
-}
+                return true
