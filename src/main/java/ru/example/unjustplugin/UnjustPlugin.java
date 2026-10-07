@@ -2,6 +2,7 @@ package ru.example.unjustplugin;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Color;
 import org.bukkit.EntityEffect;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -14,7 +15,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.WindCharge;
+import org.bukkit.entity.ThrownPotion;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -26,7 +27,10 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
 import org.bukkit.util.Vector;
@@ -55,10 +59,10 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
     private static final String TEAM_NAME = "usp_nametag";
     private static final String MACE_NAME = "§fWindcharge Shot";
+    private static final String POTION_ROD_NAME = "§fInstant Damage Rod";
 
-    // Настройки орбиталки
     private static final double ORBITAL_HEIGHT = 100.0;
-    private static final int RINGS = 10;
+    private static final int RINGS = 5;
     private static final int CHARGE_PER_RING = 30;
     private static final double MIN_RADIUS = 2.0;
     private static final double MAX_RADIUS = 25.0;
@@ -139,6 +143,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
             team.addEntry(player.getName());
             team.setPrefix(fakeName + " ");
+
         } catch (Exception e) {
             getLogger().warning("Ошибка установки ника над головой: " + e.getMessage());
         }
@@ -249,7 +254,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         player.setVelocity(backward);
     }
 
-    // ==================== ОРБИТАЛЬНЫЙ УДАР ====================
+    // ==================== ОРБИТАЛЬНЫЙ УДАР (ЗАРЯДЫ ВЕТРА) ====================
 
     @EventHandler
     public void onMaceHit(EntityDamageByEntityEvent event) {
@@ -270,7 +275,6 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         event.setCancelled(true);
         fireOrbitalWindStrike(target.getLocation());
 
-        // Ломаем булаву после одного удара
         if (meta instanceof Damageable) {
             Damageable damageable = (Damageable) meta;
             damageable.setDamage(item.getType().getMaxDurability());
@@ -297,12 +301,106 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                 double z = spawnBase.getZ() + Math.sin(angle) * radius;
 
                 Location spawnLoc = new Location(world, x, spawnBase.getY(), z);
-                WindCharge charge = world.spawn(spawnLoc, WindCharge.class);
+                org.bukkit.entity.WindCharge charge = world.spawn(
+                        spawnLoc, org.bukkit.entity.WindCharge.class);
 
-                // Направляем вниз — заряды летят до земли естественным образом
-                // и взрываются при столкновении с блоком или сущностью
                 Vector velocity = new Vector(0, -1.5, 0);
                 charge.setVelocity(velocity);
+            }
+        }
+
+        world.playSound(center, Sound.ENTITY_WITHER_SPAWN, 2.0F, 0.5F);
+        world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 2.0F, 0.7F);
+    }
+
+    // ==================== ОРБИТАЛЬНЫЙ УДАР (ЗЕЛЬЯ) ====================
+
+    @EventHandler
+    public void onPotionRodHit(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player)) return;
+        if (!(event.getEntity() instanceof LivingEntity)) return;
+
+        Player attacker = (Player) event.getDamager();
+        LivingEntity target = (LivingEntity) event.getEntity();
+
+        ItemStack item = attacker.getInventory().getItemInMainHand();
+        if (item.getType() != Material.SPLASH_POTION) return;
+
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return;
+        if (!meta.hasDisplayName()) return;
+        if (!meta.getDisplayName().equals(POTION_ROD_NAME)) return;
+
+        event.setCancelled(true);
+        fireOrbitalPotionStrike(target.getLocation());
+
+        if (meta instanceof Damageable) {
+            Damageable damageable = (Damageable) meta;
+            damageable.setDamage(item.getType().getMaxDurability());
+            item.setItemMeta((ItemMeta) damageable);
+        }
+
+        attacker.playSound(attacker.getLocation(), Sound.ENTITY_ITEM_BREAK, 1.0F, 1.0F);
+    }
+
+    /**
+     * Создаёт случайное вредное зелье для орбиталки.
+     */
+    private ItemStack createRandomHarmfulPotion() {
+        ItemStack potionItem = new ItemStack(Material.SPLASH_POTION);
+        PotionMeta potionMeta = (PotionMeta) potionItem.getItemMeta();
+        if (potionMeta == null) return potionItem;
+
+        Object[][] effects = {
+            { PotionEffectType.INSTANT_DAMAGE, 1, 1, Color.RED },
+            { PotionEffectType.POISON, 200, 2, Color.GREEN },
+            { PotionEffectType.WEAKNESS, 300, 1, Color.GRAY },
+            { PotionEffectType.SLOWNESS, 200, 1, Color.fromRGB(100, 100, 150) },
+            { PotionEffectType.SLOW_FALLING, 200, 1, Color.WHITE },
+            { PotionEffectType.HUNGER, 300, 1, Color.fromRGB(150, 100, 0) },
+            { PotionEffectType.BLINDNESS, 100, 0, Color.BLACK },
+            { PotionEffectType.NAUSEA, 200, 0, Color.fromRGB(100, 50, 150) },
+            { PotionEffectType.MINING_FATIGUE, 200, 1, Color.fromRGB(80, 80, 80) },
+            { PotionEffectType.LEVITATION, 100, 0, Color.fromRGB(200, 200, 255) }
+        };
+
+        Object[] chosen = effects[random.nextInt(effects.length)];
+        PotionEffectType type = (PotionEffectType) chosen[0];
+        int duration = (int) chosen[1];
+        int amplifier = (int) chosen[2];
+        Color color = (Color) chosen[3];
+
+        potionMeta.setColor(color);
+        potionMeta.addCustomEffect(new PotionEffect(type, duration, amplifier), true);
+        potionItem.setItemMeta(potionMeta);
+
+        return potionItem;
+    }
+
+    private void fireOrbitalPotionStrike(Location center) {
+        World world = center.getWorld();
+        if (world == null) return;
+
+        Location spawnBase = center.clone().add(0, ORBITAL_HEIGHT, 0);
+
+        for (int ring = 0; ring < RINGS; ring++) {
+            double radius = MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS)
+                    * ((double) ring / (RINGS - 1));
+            double angleStep = 360.0 / CHARGE_PER_RING;
+
+            for (int i = 0; i < CHARGE_PER_RING; i++) {
+                double angle = Math.toRadians(i * angleStep);
+                double x = spawnBase.getX() + Math.cos(angle) * radius;
+                double z = spawnBase.getZ() + Math.sin(angle) * radius;
+
+                Location spawnLoc = new Location(world, x, spawnBase.getY(), z);
+                ThrownPotion potion = (ThrownPotion) world.spawnEntity(
+                        spawnLoc, org.bukkit.entity.EntityType.SPLASH_POTION);
+
+                potion.setItem(createRandomHarmfulPotion());
+
+                Vector velocity = new Vector(0, -1.5, 0);
+                potion.setVelocity(velocity);
             }
         }
 
@@ -403,6 +501,8 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         return sb.toString();
     }
 
+    // ==================== ВЫДАЧА ПРЕДМЕТОВ ====================
+
     private void giveOrbitalMace(Player player) {
         ItemStack mace = new ItemStack(Material.MACE, 1);
         ItemMeta meta = mace.getItemMeta();
@@ -419,6 +519,26 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
         player.getInventory().addItem(mace);
         player.sendMessage(ChatColor.WHITE + "Ты получил " + MACE_NAME + "§f!");
+    }
+
+    private void givePotionRod(Player player) {
+        ItemStack potionRod = new ItemStack(Material.SPLASH_POTION, 1);
+        PotionMeta potionMeta = (PotionMeta) potionRod.getItemMeta();
+        if (potionMeta != null) {
+            potionMeta.setDisplayName(POTION_ROD_NAME);
+            potionMeta.setColor(Color.RED);
+            potionMeta.addCustomEffect(new PotionEffect(PotionEffectType.INSTANT_DAMAGE, 1, 1), true);
+            potionMeta.setLore(Arrays.asList(
+                "§7Ударь по врагу —",
+                "§7в небе раскроются кольца",
+                "§7из §cслучайных вредных зелий§7!",
+                "§c⚠ Ломается после одного удара"
+            ));
+            potionRod.setItemMeta(potionMeta);
+        }
+
+        player.getInventory().addItem(potionRod);
+        player.sendMessage(ChatColor.WHITE + "Ты получил " + POTION_ROD_NAME + "§f!");
     }
 
     // ==================== КОМАНДЫ ====================
@@ -471,6 +591,19 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                 }
 
                 giveOrbitalMace((Player) sender);
+                return true;
+            }
+
+            if (args.length >= 3 && args[0].equalsIgnoreCase("orbital")
+                    && args[1].equalsIgnoreCase("potion")
+                    && args[2].equalsIgnoreCase("rod")) {
+
+                if (!(sender instanceof Player)) {
+                    sender.sendMessage(ChatColor.RED + "Только для игроков!");
+                    return true;
+                }
+
+                givePotionRod((Player) sender);
                 return true;
             }
 
@@ -568,14 +701,15 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("orbital")) {
-            if ("mace".startsWith(args[1].toLowerCase())) {
-                result.add("mace");
+            for (String opt : Arrays.asList("mace", "potion")) {
+                if (opt.startsWith(args[1].toLowerCase())) {
+                    result.add(opt);
+                }
             }
             return result;
         }
 
-        if (args.length == 3 && args[0].equalsIgnoreCase("orbital")
-                && args[1].equalsIgnoreCase("mace")) {
+        if (args.length == 3 && args[0].equalsIgnoreCase("orbital")) {
             if ("rod".startsWith(args[2].toLowerCase())) {
                 result.add("rod");
             }
@@ -632,6 +766,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin immortal <ник> [on/off]");
         sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin chat block|unblock");
         sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin orbital mace rod");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin orbital potion rod");
         sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reload");
         sender.sendMessage(ChatColor.GRAY + "Сокращённо: /usp");
     }
