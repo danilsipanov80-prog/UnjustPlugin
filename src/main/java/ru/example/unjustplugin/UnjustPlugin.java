@@ -22,6 +22,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.PotionSplashEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -50,6 +51,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
     private final Map<UUID, String> originalNames = new HashMap<>();
     private final Map<UUID, String> fakeNames = new HashMap<>();
     private final Set<UUID> immortals = new HashSet<>();
+    private final Set<UUID> orbitalPotions = new HashSet<>();
     private final Random random = new Random();
 
     private List<String> famousNames = new ArrayList<>();
@@ -313,14 +315,17 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 2.0F, 0.7F);
     }
 
-    // ==================== ОРБИТАЛЬНЫЙ УДАР (ЗЕЛЬЯ — БРОСОК) ====================
+    // ==================== ОРБИТАЛЬНЫЙ УДАР (ЗЕЛЬЯ) ====================
 
+    /**
+     * При броске орбитального зелья — помечаем его.
+     * Орбиталка сработает в точке ПРИЗЕМЛЕНИЯ, а не в точке броска.
+     */
     @EventHandler
     public void onPotionThrow(ProjectileLaunchEvent event) {
         if (!(event.getEntity() instanceof ThrownPotion)) return;
         if (!(event.getEntity().getShooter() instanceof Player)) return;
 
-        Player thrower = (Player) event.getEntity().getShooter();
         ThrownPotion potion = (ThrownPotion) event.getEntity();
 
         ItemStack item = potion.getItem();
@@ -332,21 +337,61 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         if (!meta.hasDisplayName()) return;
         if (!meta.getDisplayName().equals(POTION_ROD_NAME)) return;
 
-        fireOrbitalPotionStrike(thrower.getLocation());
-        potion.remove();
+        orbitalPotions.add(potion.getUniqueId());
     }
 
     /**
-     * Создаёт зелье моментального урона (Harming Potion) — то самое "зелье мора".
+     * Когда орбитальное зелье разбивается — запускаем орбиталку в точке приземления.
      */
-    private ItemStack createHarmPotion() {
+    @EventHandler
+    public void onPotionSplash(PotionSplashEvent event) {
+        if (!(event.getEntity() instanceof ThrownPotion)) return;
+
+        ThrownPotion potion = (ThrownPotion) event.getEntity();
+
+        if (!orbitalPotions.contains(potion.getUniqueId())) return;
+        orbitalPotions.remove(potion.getUniqueId());
+
+        // Отменяем стандартный splash-эффект зелья
+        event.setCancelled(true);
+
+        // Запускаем орбиталку в точке приземления
+        Location landing = potion.getLocation();
+        fireOrbitalPotionStrike(landing);
+    }
+
+    /**
+     * Создаёт случайное вредное зелье со случайным уровнем (1-3).
+     */
+    private ItemStack createRandomHarmfulPotion() {
         ItemStack potionItem = new ItemStack(Material.SPLASH_POTION);
         PotionMeta potionMeta = (PotionMeta) potionItem.getItemMeta();
         if (potionMeta == null) return potionItem;
 
-        potionMeta.setColor(Color.fromRGB(120, 0, 0));
+        // Случайный уровень эффекта: 0 = I, 1 = II, 2 = III
+        int amplifier = random.nextInt(3);
+
+        Object[][] effects = {
+            { PotionEffectType.INSTANT_DAMAGE, 1, Color.fromRGB(120, 0, 0) },
+            { PotionEffectType.POISON, 200, Color.fromRGB(50, 150, 50) },
+            { PotionEffectType.WEAKNESS, 300, Color.fromRGB(120, 120, 120) },
+            { PotionEffectType.SLOWNESS, 200, Color.fromRGB(100, 100, 150) },
+            { PotionEffectType.SLOW_FALLING, 200, Color.fromRGB(200, 200, 255) },
+            { PotionEffectType.HUNGER, 300, Color.fromRGB(150, 100, 0) },
+            { PotionEffectType.BLINDNESS, 100, Color.fromRGB(30, 30, 30) },
+            { PotionEffectType.NAUSEA, 200, Color.fromRGB(100, 50, 150) },
+            { PotionEffectType.MINING_FATIGUE, 200, Color.fromRGB(80, 80, 80) },
+            { PotionEffectType.LEVITATION, 100, Color.fromRGB(220, 220, 255) }
+        };
+
+        Object[] chosen = effects[random.nextInt(effects.length)];
+        PotionEffectType type = (PotionEffectType) chosen[0];
+        int duration = (int) chosen[1];
+        Color color = (Color) chosen[2];
+
+        potionMeta.setColor(color);
         potionMeta.addCustomEffect(
-            new PotionEffect(PotionEffectType.INSTANT_DAMAGE, 1, 1),
+            new PotionEffect(type, duration, amplifier),
             true
         );
         potionItem.setItemMeta(potionMeta);
@@ -374,7 +419,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                 ThrownPotion potion = (ThrownPotion) world.spawnEntity(
                         spawnLoc, org.bukkit.entity.EntityType.POTION);
 
-                potion.setItem(createHarmPotion());
+                potion.setItem(createRandomHarmfulPotion());
 
                 Vector velocity = new Vector(0, -1.5, 0);
                 potion.setVelocity(velocity);
@@ -510,8 +555,9 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
             );
             potionMeta.setLore(Arrays.asList(
                 "§7Брось зелье —",
-                "§7с небес полетят кольца",
-                "§7из §cзелий моментального урона§7!",
+                "§7в точке приземления",
+                "§7с неба полетят кольца",
+                "§7из §cслучайных вредных зелий§7!",
                 "§c⚠ Одноразовое"
             ));
             potionRod.setItemMeta(potionMeta);
@@ -694,60 +740,4 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                 result.add("rod");
             }
             return result;
-        }
-
-        if (args.length == 2 && !args[0].equalsIgnoreCase("reload")
-                && !args[0].equalsIgnoreCase("chat")
-                && !args[0].equalsIgnoreCase("orbital")) {
-            String prefix = args[1].toLowerCase();
-            for (Player online : Bukkit.getOnlinePlayers()) {
-                String name = online.getName();
-                String fake = fakeNames.get(online.getUniqueId());
-
-                if (name.toLowerCase().startsWith(prefix)) {
-                    result.add(name);
-                }
-                if (fake != null && fake.toLowerCase().startsWith(prefix)) {
-                    result.add(fake);
-                }
-            }
-            return result;
-        }
-
-        if (args.length == 3 && args[0].equalsIgnoreCase("immortal")) {
-            String prefix = args[2].toLowerCase();
-            for (String opt : Arrays.asList("on", "off")) {
-                if (opt.startsWith(prefix)) {
-                    result.add(opt);
-                }
-            }
-            return result;
-        }
-
-        return result;
-    }
-
-    private Player findPlayer(String name) {
-        Player target = Bukkit.getPlayerExact(name);
-        if (target != null) return target;
-
-        for (Player online : Bukkit.getOnlinePlayers()) {
-            if (fakeNames.containsKey(online.getUniqueId())
-                    && fakeNames.get(online.getUniqueId()).equalsIgnoreCase(name)) {
-                return online;
-            }
-        }
-        return null;
-    }
-
-    private void sendHelp(CommandSender sender) {
-        sender.sendMessage(ChatColor.YELLOW + "===== UnjustPlugin =====");
-        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reset <ник>");
-        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin immortal <ник> [on/off]");
-        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin chat block|unblock");
-        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin orbital mace rod");
-        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin orbital potion rod");
-        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reload");
-        sender.sendMessage(ChatColor.GRAY + "Сокращённо: /usp");
-    }
-}
+       
