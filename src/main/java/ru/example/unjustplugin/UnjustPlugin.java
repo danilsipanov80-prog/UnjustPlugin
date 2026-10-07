@@ -22,10 +22,10 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -59,7 +59,7 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
     private static final String TEAM_NAME = "usp_nametag";
     private static final String MACE_NAME = "§fWindcharge Shot";
-    private static final String POTION_ROD_NAME = "§fInstant Damage Rod";
+    private static final String POTION_ROD_NAME = "§fOrbital Potion";
 
     private static final double ORBITAL_HEIGHT = 100.0;
     private static final int RINGS = 5;
@@ -143,7 +143,6 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
             team.addEntry(player.getName());
             team.setPrefix(fakeName + " ");
-
         } catch (Exception e) {
             getLogger().warning("Ошибка установки ника над головой: " + e.getMessage());
         }
@@ -254,15 +253,17 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         player.setVelocity(backward);
     }
 
-    // ==================== ОРБИТАЛЬНЫЙ УДАР (ЗАРЯДЫ ВЕТРА) ====================
+    // ==================== ОРБИТАЛЬНЫЙ УДАР (БУЛАВА) ====================
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onMaceHit(EntityDamageByEntityEvent event) {
         if (!(event.getDamager() instanceof Player)) return;
         if (!(event.getEntity() instanceof LivingEntity)) return;
 
         Player attacker = (Player) event.getDamager();
         LivingEntity target = (LivingEntity) event.getEntity();
+
+        if (attacker.equals(target)) return;
 
         ItemStack item = attacker.getInventory().getItemInMainHand();
         if (item.getType() != Material.MACE) return;
@@ -274,14 +275,16 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
         event.setCancelled(true);
         fireOrbitalWindStrike(target.getLocation());
+        breakMace(attacker, item);
+    }
 
-        if (meta instanceof Damageable) {
-            Damageable damageable = (Damageable) meta;
-            damageable.setDamage(item.getType().getMaxDurability());
-            item.setItemMeta((ItemMeta) damageable);
-        }
-
-        attacker.playSound(attacker.getLocation(), Sound.ENTITY_ITEM_BREAK, 1.0F, 1.0F);
+    /**
+     * Полностью ломает булаву (удаляет из руки). Работает даже в креативе.
+     */
+    private void breakMace(Player player, ItemStack item) {
+        player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 1.0F, 1.0F);
+        player.getInventory().setItemInMainHand(null);
+        player.updateInventory();
     }
 
     private void fireOrbitalWindStrike(Location center) {
@@ -313,17 +316,18 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 2.0F, 0.7F);
     }
 
-    // ==================== ОРБИТАЛЬНЫЙ УДАР (ЗЕЛЬЯ) ====================
+    // ==================== ОРБИТАЛЬНЫЙ УДАР (ЗЕЛЬЯ — БРОСОК) ====================
 
     @EventHandler
-    public void onPotionRodHit(EntityDamageByEntityEvent event) {
-        if (!(event.getDamager() instanceof Player)) return;
-        if (!(event.getEntity() instanceof LivingEntity)) return;
+    public void onPotionThrow(ProjectileLaunchEvent event) {
+        if (!(event.getEntity() instanceof ThrownPotion)) return;
+        if (!(event.getEntity().getShooter() instanceof Player)) return;
 
-        Player attacker = (Player) event.getDamager();
-        LivingEntity target = (LivingEntity) event.getEntity();
+        Player thrower = (Player) event.getEntity().getShooter();
+        ThrownPotion potion = (ThrownPotion) event.getEntity();
 
-        ItemStack item = attacker.getInventory().getItemInMainHand();
+        ItemStack item = potion.getItem();
+        if (item == null) return;
         if (item.getType() != Material.SPLASH_POTION) return;
 
         ItemMeta meta = item.getItemMeta();
@@ -331,21 +335,13 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         if (!meta.hasDisplayName()) return;
         if (!meta.getDisplayName().equals(POTION_ROD_NAME)) return;
 
-        event.setCancelled(true);
-        fireOrbitalPotionStrike(target.getLocation());
+        // Запускаем орбиталку в точке, откуда бросили
+        fireOrbitalPotionStrike(thrower.getLocation());
 
-        if (meta instanceof Damageable) {
-            Damageable damageable = (Damageable) meta;
-            damageable.setDamage(item.getType().getMaxDurability());
-            item.setItemMeta((ItemMeta) damageable);
-        }
-
-        attacker.playSound(attacker.getLocation(), Sound.ENTITY_ITEM_BREAK, 1.0F, 1.0F);
+        // Удаляем зелье, чтобы не сработало как обычно
+        potion.remove();
     }
 
-    /**
-     * Создаёт случайное вредное зелье для орбиталки.
-     */
     private ItemStack createRandomHarmfulPotion() {
         ItemStack potionItem = new ItemStack(Material.SPLASH_POTION);
         PotionMeta potionMeta = (PotionMeta) potionItem.getItemMeta();
@@ -529,10 +525,10 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
             potionMeta.setColor(Color.RED);
             potionMeta.addCustomEffect(new PotionEffect(PotionEffectType.INSTANT_DAMAGE, 1, 1), true);
             potionMeta.setLore(Arrays.asList(
-                "§7Ударь по врагу —",
-                "§7в небе раскроются кольца",
+                "§7Брось зелье —",
+                "§7с небес полетят кольца",
                 "§7из §cслучайных вредных зелий§7!",
-                "§c⚠ Ломается после одного удара"
+                "§c⚠ Одноразовое"
             ));
             potionRod.setItemMeta(potionMeta);
         }
