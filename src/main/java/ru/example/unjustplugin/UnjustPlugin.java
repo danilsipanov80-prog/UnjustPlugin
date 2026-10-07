@@ -317,10 +317,6 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
 
     // ==================== ОРБИТАЛЬНЫЙ УДАР (ЗЕЛЬЯ) ====================
 
-    /**
-     * При броске орбитального зелья — помечаем его.
-     * Орбиталка сработает в точке ПРИЗЕМЛЕНИЯ, а не в точке броска.
-     */
     @EventHandler
     public void onPotionThrow(ProjectileLaunchEvent event) {
         if (!(event.getEntity() instanceof ThrownPotion)) return;
@@ -340,9 +336,6 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         orbitalPotions.add(potion.getUniqueId());
     }
 
-    /**
-     * Когда орбитальное зелье разбивается — запускаем орбиталку в точке приземления.
-     */
     @EventHandler
     public void onPotionSplash(PotionSplashEvent event) {
         if (!(event.getEntity() instanceof ThrownPotion)) return;
@@ -352,23 +345,17 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         if (!orbitalPotions.contains(potion.getUniqueId())) return;
         orbitalPotions.remove(potion.getUniqueId());
 
-        // Отменяем стандартный splash-эффект зелья
         event.setCancelled(true);
 
-        // Запускаем орбиталку в точке приземления
         Location landing = potion.getLocation();
         fireOrbitalPotionStrike(landing);
     }
 
-    /**
-     * Создаёт случайное вредное зелье со случайным уровнем (1-3).
-     */
     private ItemStack createRandomHarmfulPotion() {
         ItemStack potionItem = new ItemStack(Material.SPLASH_POTION);
         PotionMeta potionMeta = (PotionMeta) potionItem.getItemMeta();
         if (potionMeta == null) return potionItem;
 
-        // Случайный уровень эффекта: 0 = I, 1 = II, 2 = III
         int amplifier = random.nextInt(3);
 
         Object[][] effects = {
@@ -740,4 +727,62 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                 result.add("rod");
             }
             return result;
-       
+        }
+
+        if (args.length == 2 && !args[0].equalsIgnoreCase("reload")
+                && !args[0].equalsIgnoreCase("chat")
+                && !args[0].equalsIgnoreCase("orbital")) {
+            String prefix = args[1].toLowerCase();
+            for (Player online : Bukkit.getOnlinePlayers()) {
+                String name = online.getName();
+                String fake = fakeNames.get(online.getUniqueId());
+
+                if (name.toLowerCase().startsWith(prefix)) {
+                    result.add(name);
+                }
+                if (fake != null && fake.toLowerCase().startsWith(prefix)) {
+                    result.add(fake);
+                }
+            }
+            return result;
+        }
+
+        if (args.length == 3 && args[0].equalsIgnoreCase("immortal")) {
+            String prefix = args[2].toLowerCase();
+            for (String opt : Arrays.asList("on", "off")) {
+                if (opt.startsWith(prefix)) {
+                    result.add(opt);
+                }
+            }
+            return result;
+        }
+
+        return result;
+    }
+
+    // ==================== ПОИСК ИГРОКА ====================
+
+    private Player findPlayer(String name) {
+        Player target = Bukkit.getPlayerExact(name);
+        if (target != null) return target;
+
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            if (fakeNames.containsKey(online.getUniqueId())
+                    && fakeNames.get(online.getUniqueId()).equalsIgnoreCase(name)) {
+                return online;
+            }
+        }
+        return null;
+    }
+
+    private void sendHelp(CommandSender sender) {
+        sender.sendMessage(ChatColor.YELLOW + "===== UnjustPlugin =====");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reset <ник>");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin immortal <ник> [on/off]");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin chat block|unblock");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin orbital mace rod");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin orbital potion rod");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reload");
+        sender.sendMessage(ChatColor.GRAY + "Сокращённо: /usp");
+    }
+}
