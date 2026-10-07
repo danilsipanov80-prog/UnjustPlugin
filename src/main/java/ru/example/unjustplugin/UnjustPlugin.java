@@ -286,9 +286,6 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
         player.updateInventory();
     }
 
-    /**
-     * Спавнит WindCharge и через задержку взрывает его.
-     */
     private void spawnExplosiveWindCharge(World world, Location loc) {
         org.bukkit.entity.WindCharge charge = world.spawn(
                 loc, org.bukkit.entity.WindCharge.class);
@@ -670,4 +667,146 @@ public final class UnjustPlugin extends JavaPlugin implements Listener, TabCompl
                 } else {
                     sender.sendMessage(ChatColor.YELLOW + "У этого игрока нет фейкового ника.");
                 }
-                return true
+                return true;
+            }
+
+            if (sub.equals("immortal")) {
+                Player target = findPlayer(args[1]);
+                if (target == null) {
+                    sender.sendMessage(ChatColor.RED + "Игрок не найден!");
+                    return true;
+                }
+
+                UUID uuid = target.getUniqueId();
+                boolean enable;
+
+                if (args.length >= 3) {
+                    enable = args[2].equalsIgnoreCase("on") || args[2].equalsIgnoreCase("true");
+                } else {
+                    enable = !immortals.contains(uuid);
+                }
+
+                if (enable) {
+                    immortals.add(uuid);
+                    target.sendMessage(ChatColor.GOLD + "[Бессмертие] " + ChatColor.GREEN
+                            + "Ты теперь бессмертен!");
+                    sender.sendMessage(ChatColor.GREEN + "Бессмертие включено для " + target.getName());
+                } else {
+                    immortals.remove(uuid);
+                    target.sendMessage(ChatColor.GOLD + "[Бессмертие] " + ChatColor.RED
+                            + "Ты больше не бессмертен.");
+                    sender.sendMessage(ChatColor.GREEN + "Бессмертие выключено для " + target.getName());
+                }
+                return true;
+            }
+
+            sendHelp(sender);
+            return true;
+
+        } catch (Exception e) {
+            sender.sendMessage(ChatColor.RED + "Произошла ошибка при выполнении команды.");
+            getLogger().warning("Ошибка команды: " + e.getMessage());
+            e.printStackTrace();
+            return true;
+        }
+    }
+
+    // ==================== АВТОДОПОЛНЕНИЕ (TAB) ====================
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command,
+                                      String alias, String[] args) {
+        List<String> result = new ArrayList<>();
+
+        if (args.length == 1) {
+            for (String sub : Arrays.asList("reset", "immortal", "reload", "chat", "orbital")) {
+                if (sub.startsWith(args[0].toLowerCase())) {
+                    result.add(sub);
+                }
+            }
+            return result;
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("chat")) {
+            String prefix = args[1].toLowerCase();
+            for (String opt : Arrays.asList("block", "unblock")) {
+                if (opt.startsWith(prefix)) {
+                    result.add(opt);
+                }
+            }
+            return result;
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("orbital")) {
+            for (String opt : Arrays.asList("mace", "potion")) {
+                if (opt.startsWith(args[1].toLowerCase())) {
+                    result.add(opt);
+                }
+            }
+            return result;
+        }
+
+        if (args.length == 3 && args[0].equalsIgnoreCase("orbital")) {
+            if ("rod".startsWith(args[2].toLowerCase())) {
+                result.add("rod");
+            }
+            return result;
+        }
+
+        if (args.length == 2 && !args[0].equalsIgnoreCase("reload")
+                && !args[0].equalsIgnoreCase("chat")
+                && !args[0].equalsIgnoreCase("orbital")) {
+            String prefix = args[1].toLowerCase();
+            for (Player online : Bukkit.getOnlinePlayers()) {
+                String name = online.getName();
+                String fake = fakeNames.get(online.getUniqueId());
+
+                if (name.toLowerCase().startsWith(prefix)) {
+                    result.add(name);
+                }
+                if (fake != null && fake.toLowerCase().startsWith(prefix)) {
+                    result.add(fake);
+                }
+            }
+            return result;
+        }
+
+        if (args.length == 3 && args[0].equalsIgnoreCase("immortal")) {
+            String prefix = args[2].toLowerCase();
+            for (String opt : Arrays.asList("on", "off")) {
+                if (opt.startsWith(prefix)) {
+                    result.add(opt);
+                }
+            }
+            return result;
+        }
+
+        return result;
+    }
+
+    // ==================== ПОИСК ИГРОКА ====================
+
+    private Player findPlayer(String name) {
+        Player target = Bukkit.getPlayerExact(name);
+        if (target != null) return target;
+
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            if (fakeNames.containsKey(online.getUniqueId())
+                    && fakeNames.get(online.getUniqueId()).equalsIgnoreCase(name)) {
+                return online;
+            }
+        }
+        return null;
+    }
+
+    private void sendHelp(CommandSender sender) {
+        sender.sendMessage(ChatColor.YELLOW + "===== UnjustPlugin =====");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reset <ник>");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin immortal <ник> [on/off]");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin chat block|unblock");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin orbital mace rod");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin orbital potion rod");
+        sender.sendMessage(ChatColor.WHITE + "/unjustsmpplugin reload");
+        sender.sendMessage(ChatColor.GRAY + "Сокращённо: /usp");
+    }
+}
